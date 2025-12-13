@@ -1,0 +1,5 @@
+{
+  "name": "全能模型中心",
+  "description": "一个综合仪表板，用于测试、管理和使用兼容 OpenAI 格式的自定义 AI 服务商（文本、图片和视频）。具有模拟的 Google Drive 配置集成和阿里云盘资源存储功能。",
+  "requestFramePermissions": []
+}
