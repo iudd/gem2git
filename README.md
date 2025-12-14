@@ -5,7 +5,6 @@ colorFrom: blue
 colorTo: purple
 sdk: static
 sdk_version: 1.0.0
-app_file: index.html
 pinned: false
 ---
 
