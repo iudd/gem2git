@@ -4,7 +4,7 @@ emoji: 🤖
 colorFrom: blue
 colorTo: green
 sdk: docker
-app_port: 1025
+app_port: 3000
 pinned: false
 secrets:
   - VITE_API_KEY
@@ -35,7 +35,7 @@ npm run dev
 ### HF Spaces 配置说明
 
 - **SDK**: Docker
-- **端口**: 1025 (HF Spaces 外部端口，容器内部映射到 80)
+- **端口**: 3000 (HF Spaces 外部端口，容器内部映射到 80)
 - **Secrets**: 需要配置 `VITE_API_KEY` 用于API访问
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
