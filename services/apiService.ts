@@ -3,183 +3,200 @@ import { ProviderConfig, ModelType } from '../types';
 export class ApiService {
   
   /**
+   * Helper to remove trailing slashes from URLs
+   */
+  private static normalizeUrl(url: string): string {
+    return url ? url.trim().replace(/\/+$/, '') : '';
+  }
+
+  /**
+   * Helper to handle API responses robustly
+   */
+  private static async handleResponse(res: Response, context: string): Promise<any> {
+    if (!res.ok) {
+      let errorMessage = `${context}失败 (Status: ${res.status})`;
+      try {
+        const err = await res.json();
+        if (err.error?.message) {
+          errorMessage = err.error.message;
+        } else if (err.message) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = JSON.stringify(err);
+        }
+      } catch (e) {
+        errorMessage = `${context}失败: 服务器返回了 ${res.status} ${res.statusText}。请检查 Base URL 是否正确。`;
+      }
+      throw new Error(errorMessage);
+    }
+    return res.json();
+  }
+
+  /**
+   * Wrapper for fetch with explicit timeout handling
+   */
+  private static async fetchWithTimeout(url: string, options: RequestInit, timeoutMs: number = 60000): Promise<Response> {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(id);
+        return response;
+    } catch (error: any) {
+        clearTimeout(id);
+        if (error.name === 'AbortError' || error.message?.includes('aborted')) {
+             throw new Error(`请求超时 (${timeoutMs/1000}秒) - 请检查网络或服务商响应速度`);
+        }
+        throw error;
+    }
+  }
+
+  /**
    * Fetch available models from the provider
-   * Assumes OpenAI-compatible endpoint: GET /models
    */
   static async getModels(baseUrl: string, apiKey: string): Promise<string[]> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
     try {
-      // Ensure no double slashes if user added trailing slash
-      const cleanUrl = baseUrl.replace(/\/+$/, '');
-      const res = await fetch(`${cleanUrl}/models`, {
+      const cleanUrl = ApiService.normalizeUrl(baseUrl);
+      // 15s timeout for model list
+      const res = await ApiService.fetchWithTimeout(`${cleanUrl}/models`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        signal: controller.signal,
-      });
+      }, 15000);
 
-      clearTimeout(timeoutId);
-
-      if (!res.ok) {
-        return [];
-      }
+      if (!res.ok) return [];
 
       const data = await res.json();
-      // Standard OpenAI format: { data: [{ id: "model-id", ... }] }
       if (data && Array.isArray(data.data)) {
         return data.data.map((m: any) => m.id);
+      } else if (Array.isArray(data)) {
+        // Some non-standard implementations return array directly
+        return data.map((m: any) => m.id || m);
       }
       return [];
     } catch (e) {
       console.warn("Failed to fetch models list", e);
       return [];
-    } finally {
-        clearTimeout(timeoutId);
     }
   }
 
   /**
-   * Test a provider configuration by making a minimal request
+   * Test connection by trying to fetch models or making a cheap call
    */
-  static async testConnection(config: ProviderConfig): Promise<boolean> {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
+  static async testConnection(provider: ProviderConfig): Promise<boolean> {
     try {
-      if (config.type === ModelType.TEXT) {
-        // Test Chat Completion
-        const res = await fetch(`${config.baseUrl}/chat/completions`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: config.modelName,
-            messages: [{ role: 'user', content: 'Ping' }],
-            max_tokens: 5,
-          }),
-          signal: controller.signal,
-        });
-        return res.ok;
-      } else if (config.type === ModelType.IMAGE) {
-        // Test Image Generation
-        // Try /models first as it is cheaper/safer
-        const res = await fetch(`${config.baseUrl}/models`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${config.apiKey}`,
-            },
-            signal: controller.signal,
-        });
-        return res.ok;
-      } else {
-        // Video
-        const res = await fetch(`${config.baseUrl}/models`, {
-            method: 'GET',
-            headers: {
-                'Authorization': `Bearer ${config.apiKey}`,
-            },
-            signal: controller.signal,
-        });
-        return res.ok;
+      const models = await ApiService.getModels(provider.baseUrl, provider.apiKey);
+      if (models.length > 0) return true;
+      
+      // Fallback: Try a minimal completion generation if models endpoint is not supported
+      if (provider.type === ModelType.TEXT) {
+          await ApiService.generateCompletion(provider, [{ role: 'user', content: 'hi' }], { 
+            temperature: 0.1, 
+            model: provider.modelName 
+          });
+          return true;
       }
-    } catch (e) {
-      console.error("Connection test failed", e);
       return false;
-    } finally {
-        clearTimeout(timeoutId);
+    } catch (e) {
+      console.error(e);
+      return false;
     }
   }
 
+  /**
+   * Generate Text Completion (Chat)
+   */
   static async generateCompletion(
-    config: ProviderConfig, 
-    messages: any[], 
-    options?: { temperature?: number }
+    provider: ProviderConfig, 
+    messages: { role: string; content: string }[],
+    config: { temperature?: number; model?: string } = {}
   ): Promise<string> {
-    const res = await fetch(`${config.baseUrl}/chat/completions`, {
+    const cleanUrl = ApiService.normalizeUrl(provider.baseUrl);
+    const modelToUse = config.model || provider.modelName;
+
+    const res = await ApiService.fetchWithTimeout(`${cleanUrl}/chat/completions`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.modelName,
+        model: modelToUse,
         messages: messages,
-        temperature: options?.temperature ?? 0.7,
+        temperature: config.temperature ?? 0.7,
+        stream: false,
       }),
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || '文本生成失败');
-    }
-
-    const data = await res.json();
-    return data.choices[0].message.content;
+    const data = await ApiService.handleResponse(res, '生成文本');
+    return data.choices?.[0]?.message?.content || '无内容返回';
   }
 
+  /**
+   * Generate Image
+   */
   static async generateImage(
-    config: ProviderConfig, 
-    prompt: string, 
-    options?: { size?: string, quality?: string }
+      provider: ProviderConfig, 
+      prompt: string,
+      config: { size?: string; quality?: string; model?: string } = {}
   ): Promise<string> {
-    const res = await fetch(`${config.baseUrl}/images/generations`, {
+    const cleanUrl = ApiService.normalizeUrl(provider.baseUrl);
+    const modelToUse = config.model || provider.modelName;
+    
+    const res = await ApiService.fetchWithTimeout(`${cleanUrl}/images/generations`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.modelName,
+        model: modelToUse,
         prompt: prompt,
         n: 1,
-        size: options?.size || "1024x1024",
-        quality: options?.quality || "standard",
+        size: config.size || "1024x1024",
+        quality: config.quality || "standard",
       }),
     });
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || '图像生成失败');
-    }
-
-    const data = await res.json();
-    return data.data[0].url;
+    const data = await ApiService.handleResponse(res, '生成图片');
+    return data.data?.[0]?.url || '';
   }
 
-  // Experimental Video Generation (Mocking OpenAI format behavior)
-  static async generateVideo(config: ProviderConfig, prompt: string): Promise<string> {
-    // There is no standard OpenAI video endpoint yet.
-    // We assume the provider uses a structure similar to images or a specific /video/generations path
-    const endpoint = config.baseUrl.includes('video') ? config.baseUrl : `${config.baseUrl}/video/generations`;
-    
-    const res = await fetch(endpoint, {
+  /**
+   * Generate Video
+   * Note: This assumes an OpenAI-like structure for video which isn't standard yet.
+   * Adjusting for common "Sunuo" or "Sora" wrappers that often use /v1/video/generations or similar.
+   * For this demo, we assume a generic endpoint `/video/generations` or falls back to chat if needed.
+   */
+  static async generateVideo(
+      provider: ProviderConfig, 
+      prompt: string,
+      modelOverride?: string
+  ): Promise<string> {
+    const cleanUrl = ApiService.normalizeUrl(provider.baseUrl);
+    const modelToUse = modelOverride || provider.modelName;
+
+    // Try standard-ish video endpoint
+    const res = await ApiService.fetchWithTimeout(`${cleanUrl}/video/generations`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${provider.apiKey}`,
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
       },
       body: JSON.stringify({
-        model: config.modelName,
+        model: modelToUse,
         prompt: prompt,
       }),
     });
 
-    if (!res.ok) {
-        if(res.status === 404) {
-           throw new Error("未找到视频接口端点。请确保视频服务的 BaseURL 正确。");
-        }
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error?.message || '视频生成失败');
-    }
-
-    const data = await res.json();
-    // Support various common return formats for video proxies
-    return data.data?.[0]?.url || data.url || data.output || '';
+    const data = await ApiService.handleResponse(res, '生成视频');
+    // Adapt to common response formats
+    return data.data?.[0]?.url || data.url || data.video_url || '';
   }
 }

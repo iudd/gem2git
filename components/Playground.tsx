@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ProviderConfig, ModelType, ChatMessage, GeneratedAsset } from '../types';
 import { ApiService } from '../services/apiService';
 import { StorageService } from '../services/storageService';
-import { Send, Image as ImageIcon, Video, MessageSquare, CloudUpload, AlertCircle, Settings2, ChevronDown, ChevronUp, User, Bot } from 'lucide-react';
+import { Send, Image as ImageIcon, Video, MessageSquare, CloudUpload, AlertCircle, Settings2, ChevronDown, ChevronUp, User, Bot, Trash2, RefreshCw, Box } from 'lucide-react';
 
 interface PlaygroundProps {
   providers: ProviderConfig[];
@@ -10,6 +10,13 @@ interface PlaygroundProps {
 
 export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
   const [selectedProviderId, setSelectedProviderId] = useState<string>('');
+  
+  // Model Management State
+  const [activeModel, setActiveModel] = useState<string>('');
+  const [modelList, setModelList] = useState<string[]>([]);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [useDropdown, setUseDropdown] = useState(false);
+
   const [prompt, setPrompt] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
@@ -23,21 +30,75 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
   const [imageQuality, setImageQuality] = useState("standard");
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const selectedProvider = providers.find(p => p.id === selectedProviderId);
 
+  // Initialize selection
   useEffect(() => {
     if (providers.length > 0 && !selectedProviderId) {
       setSelectedProviderId(providers[0].id);
     }
   }, [providers, selectedProviderId]);
 
+  // When provider changes, reset state and load history
+  useEffect(() => {
+    if (selectedProvider) {
+        // 1. Set default model from config
+        setActiveModel(selectedProvider.modelName);
+        setModelList([]); // Clear previous provider's list
+        setUseDropdown(false);
+
+        // 2. Load History
+        const history = StorageService.loadChatHistory(selectedProvider.id);
+        setMessages(history);
+        setResultUrl(null); 
+        setPrompt('');
+    }
+  }, [selectedProviderId, selectedProvider]); // Added selectedProvider to dep array to be safe
+
+  // Auto-save chat history when messages change
+  useEffect(() => {
+      if (selectedProviderId && messages.length > 0) {
+          StorageService.saveChatHistory(selectedProviderId, messages);
+      }
+  }, [messages, selectedProviderId]);
+
   // Auto-scroll to bottom of chat
   useEffect(() => {
-    if (chatContainerRef.current) {
-      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-    }
-  }, [messages, selectedProviderId]);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleFetchModels = async () => {
+      if (!selectedProvider) return;
+      setIsFetchingModels(true);
+      try {
+          const models = await ApiService.getModels(selectedProvider.baseUrl, selectedProvider.apiKey);
+          if (models.length > 0) {
+              setModelList(models);
+              setUseDropdown(true);
+              // If current active model isn't in list, optionally switch to first one or keep it
+              if (!models.includes(activeModel)) {
+                  // Keep activeModel as is, or switch? Let's keep it but user can select from dropdown
+              }
+          } else {
+              alert("该服务商未返回模型列表，请手动输入。");
+              setUseDropdown(false);
+          }
+      } catch (e) {
+          console.error(e);
+          alert("获取模型列表失败");
+      } finally {
+          setIsFetchingModels(false);
+      }
+  };
+
+  const handleClearHistory = () => {
+      if (window.confirm("确定要清空当前对话历史吗？")) {
+          setMessages([]);
+          StorageService.clearChatHistory(selectedProviderId);
+      }
+  };
 
   const handleSend = async () => {
     if (!selectedProvider || !prompt) return;
@@ -53,23 +114,30 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
         setMessages(updatedMessages);
         setPrompt(''); // Clear input for chat
         
+        StorageService.saveChatHistory(selectedProviderId, updatedMessages);
+
         const responseText = await ApiService.generateCompletion(
           selectedProvider, 
           updatedMessages.map(m => ({ role: m.role, content: m.content })),
-          { temperature }
+          { 
+              temperature,
+              model: activeModel // Pass the dynamic model override
+          }
         );
         
-        setMessages(prev => [...prev, { role: 'assistant', content: responseText, timestamp: Date.now() }]);
+        const finalMessages: ChatMessage[] = [...updatedMessages, { role: 'assistant', content: responseText, timestamp: Date.now() }];
+        setMessages(finalMessages);
       } 
       else if (selectedProvider.type === ModelType.IMAGE) {
         const url = await ApiService.generateImage(selectedProvider, prompt, {
             size: imageSize,
-            quality: imageQuality
+            quality: imageQuality,
+            model: activeModel // Pass override
         });
         setResultUrl(url);
       } 
       else if (selectedProvider.type === ModelType.VIDEO) {
-        const url = await ApiService.generateVideo(selectedProvider, prompt);
+        const url = await ApiService.generateVideo(selectedProvider, prompt, activeModel);
         setResultUrl(url);
       }
     } catch (error: any) {
@@ -82,11 +150,9 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
   const handleSaveToADrive = async () => {
     if (!selectedProvider) return;
     
-    // Determine what to save
     let assetUrl = resultUrl;
     let contentPrompt = prompt;
 
-    // If text, we might save the transcript as a text file asset, but for this demo let's focus on media
     if (selectedProvider.type === ModelType.TEXT) {
        alert("文本记录保存功能暂未开放。");
        return;
@@ -99,7 +165,7 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
           id: crypto.randomUUID(),
           type: selectedProvider.type,
           url: assetUrl,
-          prompt: selectedProvider.type === ModelType.TEXT ? '' : contentPrompt || '生成的资源',
+          prompt: contentPrompt || '生成的资源',
           createdAt: Date.now(),
           providerId: selectedProvider.id
         };
@@ -130,6 +196,8 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
       {/* Controls */}
       <div className="lg:col-span-1 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col gap-4 shadow-xl">
+        
+        {/* 1. Provider Selection */}
         <div>
           <label className="block text-xs font-medium text-slate-400 mb-2">选择服务商</label>
           <select 
@@ -139,10 +207,51 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
           >
             {providers.map(p => (
               <option key={p.id} value={p.id}>
-                {p.name} ({p.type === 'text' ? '文本' : p.type === 'image' ? '图像' : '视频'} - {p.modelName})
+                {p.name} ({p.type === 'text' ? '文本' : p.type === 'image' ? '图像' : '视频'})
               </option>
             ))}
           </select>
+        </div>
+
+        {/* 2. Model Override Control */}
+        <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800">
+            <div className="flex justify-between items-center mb-2">
+                <label className="text-xs font-medium text-slate-400 flex items-center gap-1">
+                    <Box className="w-3 h-3"/> 当前模型
+                </label>
+                <button 
+                    onClick={handleFetchModels}
+                    disabled={isFetchingModels}
+                    className="text-[10px] text-blue-500 hover:text-blue-400 flex items-center gap-1"
+                >
+                    {isFetchingModels ? <div className="animate-spin w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full"/> : <RefreshCw className="w-3 h-3"/>}
+                    刷新列表
+                </button>
+            </div>
+            
+            {useDropdown && modelList.length > 0 ? (
+                <div className="relative">
+                    <select 
+                        value={activeModel}
+                        onChange={(e) => setActiveModel(e.target.value)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded text-xs p-2 text-white outline-none appearance-none"
+                    >
+                        {modelList.map(m => (
+                            <option key={m} value={m}>{m}</option>
+                        ))}
+                    </select>
+                    <div className="absolute right-2 top-2 pointer-events-none text-slate-500">
+                        <ChevronDown className="w-3 h-3"/>
+                    </div>
+                </div>
+            ) : (
+                <input 
+                    value={activeModel}
+                    onChange={(e) => setActiveModel(e.target.value)}
+                    placeholder="例如: gpt-4"
+                    className="w-full bg-slate-900 border border-slate-700 rounded text-xs p-2 text-white outline-none font-mono"
+                />
+            )}
         </div>
 
         {/* Settings Toggle */}
@@ -222,41 +331,49 @@ export const Playground: React.FC<PlaygroundProps> = ({ providers }) => {
         
         {selectedProvider?.type === ModelType.TEXT && (
            <div 
-             ref={chatContainerRef}
-             className="flex-1 bg-slate-950 border border-slate-800 rounded-lg p-4 overflow-y-auto space-y-6 custom-scrollbar scroll-smooth"
+             className="flex-1 bg-slate-950 border border-slate-800 rounded-lg flex flex-col overflow-hidden relative"
            >
-             {messages.length === 0 && (
-                <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-2">
-                    <MessageSquare className="w-8 h-8 opacity-50"/>
-                    <p className="text-sm">开始对话...</p>
-                </div>
-             )}
-             {messages.map((m, i) => (
-               <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
-                 <div className={`flex items-end gap-2 max-w-[90%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                    {/* Avatar Icon */}
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
-                        {m.role === 'user' ? <User size={12} /> : <Bot size={12} />}
+             <div className="absolute top-2 right-2 z-10">
+                 <button onClick={handleClearHistory} className="p-1.5 text-slate-600 hover:text-red-400 rounded transition-colors" title="清空历史">
+                     <Trash2 className="w-4 h-4"/>
+                 </button>
+             </div>
+             
+             <div ref={chatContainerRef} className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar scroll-smooth">
+                {messages.length === 0 && (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-600 space-y-2 opacity-50">
+                        <MessageSquare className="w-8 h-8"/>
+                        <p className="text-sm">暂无对话记录</p>
                     </div>
+                )}
+                {messages.map((m, i) => (
+                <div key={i} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'}`}>
+                    <div className={`flex items-end gap-2 max-w-[90%] ${m.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                        {/* Avatar Icon */}
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${m.role === 'user' ? 'bg-blue-600' : 'bg-emerald-600'}`}>
+                            {m.role === 'user' ? <User size={12} /> : <Bot size={12} />}
+                        </div>
 
-                    {/* Bubble */}
-                    <div className={`rounded-2xl px-4 py-3 text-sm shadow-md leading-relaxed whitespace-pre-wrap ${
-                        m.role === 'user' 
-                        ? 'bg-blue-600 text-white rounded-tr-sm' 
-                        : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'
-                    }`}>
-                        {m.content}
+                        {/* Bubble */}
+                        <div className={`rounded-2xl px-4 py-3 text-sm shadow-md leading-relaxed whitespace-pre-wrap ${
+                            m.role === 'user' 
+                            ? 'bg-blue-600 text-white rounded-tr-sm' 
+                            : 'bg-slate-800 text-slate-200 rounded-tl-sm border border-slate-700'
+                        }`}>
+                            {m.content}
+                        </div>
                     </div>
-                 </div>
-                 
-                 {/* Timestamp & Role Label */}
-                 <div className={`mt-1 flex items-center gap-2 text-[10px] text-slate-500 ${m.role === 'user' ? 'mr-10' : 'ml-10'}`}>
-                    <span className="uppercase font-bold tracking-wider opacity-70">{m.role}</span>
-                    <span>•</span>
-                    <span className="font-mono">{formatTime(m.timestamp)}</span>
-                 </div>
-               </div>
-             ))}
+                    
+                    {/* Timestamp & Role Label */}
+                    <div className={`mt-1 flex items-center gap-2 text-[10px] text-slate-500 ${m.role === 'user' ? 'mr-10' : 'ml-10'}`}>
+                        <span className="uppercase font-bold tracking-wider opacity-70">{m.role}</span>
+                        <span>•</span>
+                        <span className="font-mono">{formatTime(m.timestamp)}</span>
+                    </div>
+                </div>
+                ))}
+                <div ref={messagesEndRef} />
+             </div>
            </div>
         )}
 
