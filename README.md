@@ -6,6 +6,8 @@ colorTo: green
 sdk: docker
 app_port: 80
 pinned: false
+secrets:
+  - VITE_API_KEY
 ---
 
 # OmniModel Hub
@@ -29,5 +31,11 @@ npm run dev
 ## 部署
 
 此项目已配置为可部署到 Hugging Face Spaces。
+
+### HF Spaces 配置说明
+
+- **SDK**: Docker
+- **端口**: 80
+- **Secrets**: 需要配置 `VITE_API_KEY` 用于API访问
 
 Check out the configuration reference at https://huggingface.co/docs/hub/spaces-config-reference
