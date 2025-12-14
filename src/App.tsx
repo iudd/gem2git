@@ -4,7 +4,7 @@ import { StorageService } from './services/storageService';
 import { ProviderManager } from './components/ProviderManager';
 import { Playground } from './components/Playground';
 import { BatchGenerator } from './components/BatchGenerator';
-import { Layers, Terminal, Server, LayoutGrid } from 'lucide-react';
+import { Layers, Terminal, Server, LayoutGrid, Sparkles } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'manager' | 'playground' | 'batch'>('manager');
@@ -25,62 +25,82 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans">
+    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 font-sans relative overflow-hidden">
+      {/* Background Effects */}
+      <div className="absolute inset-0 bg-[url('data:image/svg+xml,%3Csvg width="60" height="60" viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg"%3E%3Cg fill="none" fill-rule="evenodd"%3E%3Cg fill="%23ffffff" fill-opacity="0.03"%3E%3Ccircle cx="7" cy="7" r="1"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E')] opacity-40"></div>
+      <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-pulse"></div>
+      <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-gradient-radial from-transparent via-blue-500/5 to-transparent rounded-full blur-3xl"></div>
+
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
+      <header className="relative border-b border-slate-800/50 bg-slate-950/80 backdrop-blur-xl sticky top-0 z-50 shadow-2xl shadow-slate-900/50">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-500/20">
-              <Layers className="text-white w-5 h-5" />
+          <div className="flex items-center gap-4">
+            <div className="relative group">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 via-purple-500 to-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:shadow-blue-500/40 transition-all duration-300 group-hover:scale-105">
+                <Layers className="text-white w-6 h-6" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full animate-ping"></div>
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full"></div>
             </div>
-            <h1 className="font-bold text-lg tracking-tight hidden sm:block">OmniModel <span className="text-slate-500 font-normal">Hub</span></h1>
-            <h1 className="font-bold text-lg tracking-tight sm:hidden">Omni</h1>
+            <div className="flex flex-col">
+              <h1 className="font-bold text-xl tracking-tight bg-gradient-to-r from-blue-400 via-purple-400 to-indigo-400 bg-clip-text text-transparent">
+                OmniModel Hub
+              </h1>
+              <p className="text-xs text-slate-500 hidden sm:block">AI 模型交互平台</p>
+            </div>
           </div>
           
-          <nav className="flex gap-1 bg-slate-900/50 p-1 rounded-lg border border-slate-800">
+          <nav className="flex gap-1 bg-slate-900/50 p-1.5 rounded-xl border border-slate-800/50 backdrop-blur-sm shadow-lg shadow-slate-900/20">
             <button 
               onClick={() => setActiveTab('manager')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'manager' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 relative group ${activeTab === 'manager' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
             >
-              <Server className="w-4 h-4" /> <span className="hidden sm:inline">服务商</span>
+              <Server className="w-4 h-4" /> 
+              <span className="hidden sm:inline">服务商</span>
+              {activeTab === 'manager' && <Sparkles className="w-3 h-3 absolute -top-1 -right-1 text-yellow-400 animate-bounce" />}
             </button>
             <button 
               onClick={() => setActiveTab('playground')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'playground' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 relative group ${activeTab === 'playground' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
             >
-              <Terminal className="w-4 h-4" /> <span className="hidden sm:inline">演练场</span>
+              <Terminal className="w-4 h-4" /> 
+              <span className="hidden sm:inline">演练场</span>
+              {activeTab === 'playground' && <Sparkles className="w-3 h-3 absolute -top-1 -right-1 text-yellow-400 animate-bounce" />}
             </button>
             <button 
               onClick={() => setActiveTab('batch')}
-              className={`px-3 sm:px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'batch' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-all duration-300 flex items-center gap-2 relative group ${activeTab === 'batch' ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-500/25' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'}`}
             >
-              <LayoutGrid className="w-4 h-4" /> <span className="hidden sm:inline">云盘</span>
+              <LayoutGrid className="w-4 h-4" /> 
+              <span className="hidden sm:inline">云盘</span>
+              {activeTab === 'batch' && <Sparkles className="w-3 h-3 absolute -top-1 -right-1 text-yellow-400 animate-bounce" />}
             </button>
           </nav>
 
-          <div className="hidden md:flex items-center gap-2 text-xs text-slate-500">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-            Drive 已连接
+          <div className="hidden md:flex items-center gap-3 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg backdrop-blur-sm">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-lg shadow-green-500/50"></div>
+            <span className="text-xs text-green-400 font-medium">Drive 已连接</span>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 overflow-y-auto overflow-x-hidden">
+      <main className="relative flex-1 max-w-7xl mx-auto w-full p-6 overflow-y-auto overflow-x-hidden">
         {activeTab === 'manager' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <ProviderManager />
           </div>
         )}
 
         {activeTab === 'playground' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300 h-full">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 h-full">
             <Playground providers={providers} />
           </div>
         )}
 
         {activeTab === 'batch' && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <BatchGenerator providers={providers} />
           </div>
         )}
