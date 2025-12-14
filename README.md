@@ -3,8 +3,8 @@ title: OmniModel Hub
 emoji: 🤖
 colorFrom: blue
 colorTo: green
-sdk: static
-app_file: index.html
+sdk: docker
+app_port: 80
 pinned: false
 ---
 
