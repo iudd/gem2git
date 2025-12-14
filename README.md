@@ -7,7 +7,6 @@ sdk: static
 sdk_version: 1.0.0
 app_file: index.html
 pinned: false
-duplicate_from: iudd/gem2git
 ---
 
 # 全能模型中心
